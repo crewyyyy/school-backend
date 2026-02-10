@@ -1,0 +1,27 @@
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+COPY . /app
+
+ENV APP_PORT=8000
+ENV DATABASE_URL=sqlite+pysqlite:////data/school.db
+ENV MEDIA_DIR=/data/media
+ENV STORAGE_BACKEND=local
+ENV AUTO_CREATE_ADMIN=true
+ENV BOOTSTRAP_ADMIN_LOGIN=admin
+ENV BOOTSTRAP_ADMIN_PASSWORD=admin123
+
+VOLUME ["/data"]
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=5s --retries=10 CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"
+
+CMD ["python", "scripts/start_standalone.py"]

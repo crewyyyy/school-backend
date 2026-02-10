@@ -1,0 +1,42 @@
+name: school
+
+services:
+  backend:
+    container_name: school-api
+    build:
+      context: .
+      dockerfile: Dockerfile.standalone
+    image: school-api:latest
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    environment:
+      APP_PORT: ${APP_PORT:-8000}
+      PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
+      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      DATABASE_URL: ${STANDALONE_DATABASE_URL:-sqlite+pysqlite:////data/school.db}
+      MEDIA_DIR: ${STANDALONE_MEDIA_DIR:-/data/media}
+      MEDIA_BASE_URL: ${STANDALONE_MEDIA_BASE_URL:-}
+      STORAGE_BACKEND: local
+      AUTO_CREATE_ADMIN: ${AUTO_CREATE_ADMIN:-true}
+      BOOTSTRAP_ADMIN_LOGIN: ${BOOTSTRAP_ADMIN_LOGIN:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-admin123}
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-/app/secrets/fcm-service-account.json}
+      FCM_TOPIC: ${FCM_TOPIC:-school_all}
+    volumes:
+      - backend_data:/data
+      - ./secrets:/app/secrets:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  backend_data:
+    name: school-api-data

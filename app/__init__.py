@@ -1,0 +1,2 @@
+"""School events backend package."""
+
