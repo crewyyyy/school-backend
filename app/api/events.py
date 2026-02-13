@@ -215,6 +215,21 @@ def publish_event(
     return PublishResponse(status=event.status)
 
 
+@router.delete("/{event_id}")
+def delete_event(
+    event_id: str,
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    db.delete(event)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/admin", response_model=list[EventAdminListItem])
 def list_events_admin(
     status_value: str | None = Query(default=None, alias="status"),

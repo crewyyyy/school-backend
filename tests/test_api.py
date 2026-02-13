@@ -98,6 +98,20 @@ def test_event_admin_editing_flow(app_client: TestClient):
     assert event_id in admin_ids
 
 
+def test_event_delete_flow(app_client: TestClient):
+    headers = auth_headers(app_client)
+    create_response = app_client.post("/events", headers=headers, json={"title": "Удаляемое мероприятие"})
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+
+    delete_response = app_client.delete(f"/events/{event_id}", headers=headers)
+    assert delete_response.status_code == 200
+    assert delete_response.json()["ok"] is True
+
+    details_response = app_client.get(f"/events/{event_id}")
+    assert details_response.status_code == 404
+
+
 def _create_and_publish_event(client: TestClient, headers: dict[str, str], title: str, dt: datetime) -> str:
     create_response = client.post(
         "/events",
