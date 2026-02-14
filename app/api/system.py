@@ -1,14 +1,24 @@
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_admin
 from app.core.config import get_settings
 from app.db.session import get_db
+from app.models.admin import Admin
 from app.models.device import Device
+from app.services.push import PushService
 
 router = APIRouter(tags=["system"])
+push_service = PushService()
+
+
+class PushTestRequest(BaseModel):
+    title: str = Field(default="EduFlow test notification", max_length=120)
+    body: str = Field(default="If you see this message, push notifications are configured correctly.", max_length=500)
 
 
 @router.get("/health")
@@ -43,3 +53,16 @@ def push_status(db: Session = Depends(get_db)):
         "topic": settings.fcm_topic,
         "registered_devices": devices_count,
     }
+
+
+@router.post("/push/test")
+def push_test(
+    payload: PushTestRequest,
+    db: Session = Depends(get_db),
+    _: Admin = Depends(get_current_admin),
+):
+    return push_service.send_test_notification(
+        title=payload.title,
+        body=payload.body,
+        db=db,
+    )

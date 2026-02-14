@@ -105,6 +105,31 @@ class PushService:
             token=token,
         )
 
+    def _build_test_message(
+        self,
+        title: str,
+        body: str,
+        *,
+        topic: str | None = None,
+        token: str | None = None,
+    ):
+        return messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            data={
+                "notification_type": "test",
+                "event_id": "test",
+                "deep_link": "school-events://event/test",
+                "event_title": title,
+                "event_datetime_start": "",
+                "event_location": body,
+            },
+            topic=topic,
+            token=token,
+        )
+
     def _collect_device_tokens(self, db: Session | None) -> list[str]:
         if db is None:
             return []
@@ -183,3 +208,50 @@ class PushService:
 
     def send_event_canceled(self, event: Event, db: Session | None = None) -> None:
         self._send_event(event, "canceled", db)
+
+    def send_test_notification(
+        self,
+        title: str,
+        body: str,
+        db: Session | None = None,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "ok": False,
+            "enabled": self.enabled,
+            "topic": self.settings.fcm_topic,
+            "tokens_total": 0,
+            "tokens_delivered": 0,
+            "topic_sent": False,
+            "errors": [],
+        }
+
+        if not self.enabled:
+            result["errors"] = ["push_service_disabled_or_missing_credentials"]
+            return result
+
+        tokens = self._collect_device_tokens(db)
+        result["tokens_total"] = len(tokens)
+
+        errors: list[str] = []
+        delivered = 0
+        for token in tokens:
+            try:
+                messaging.send(self._build_test_message(title, body, token=token))
+                delivered += 1
+            except Exception as exc:  # pragma: no cover
+                errors.append(f"token:{token[:12]}... {exc}")
+
+        result["tokens_delivered"] = delivered
+        topic_sent = False
+        if delivered == 0:
+            try:
+                messaging.send(self._build_test_message(title, body, topic=self.settings.fcm_topic))
+                topic_sent = True
+            except Exception as exc:  # pragma: no cover
+                errors.append(f"topic:{self.settings.fcm_topic} {exc}")
+        result["topic_sent"] = topic_sent
+
+        result["ok"] = delivered > 0 or topic_sent
+        if errors:
+            result["errors"] = errors[:5]
+        return result
