@@ -11,7 +11,10 @@ class _EventStub:
 
 
 def test_notification_title():
-    assert _notification_title() == "Новое событие!"
+    assert _notification_title("new") == "Новое мероприятие!"
+    assert _notification_title("rescheduled") == "Мероприятие перенесено"
+    assert _notification_title("updated") == "Мероприятие изменено"
+    assert _notification_title("canceled") == "Мероприятие отменено"
 
 
 def test_notification_body_format():

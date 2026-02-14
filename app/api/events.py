@@ -61,16 +61,35 @@ def update_event(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
+    was_published = event.status == "published"
+    old_title = event.title
+    old_datetime_start = event.datetime_start
+    old_location = event.location
+
+    changed_title = False
+    changed_datetime = False
+    changed_location = False
+
     if payload.title is not None:
+        changed_title = payload.title != old_title
         event.title = payload.title
     if payload.datetime_start is not None:
+        changed_datetime = payload.datetime_start != old_datetime_start
         event.datetime_start = payload.datetime_start
     if payload.location is not None:
+        changed_location = payload.location != old_location
         event.location = payload.location
 
     db.add(event)
     db.commit()
     db.refresh(event)
+
+    if was_published:
+        if changed_datetime:
+            push_service.send_event_rescheduled(event, db)
+        elif changed_title or changed_location:
+            push_service.send_event_updated(event, db)
+
     return EventCreateResponse(id=event.id, status=event.status)
 
 
@@ -206,12 +225,14 @@ def publish_event(
             detail={"error": "missing_required_fields", "fields": missing_fields},
         )
 
+    was_published = event.status == "published"
     event.status = "published"
     db.add(event)
     db.commit()
     db.refresh(event)
 
-    push_service.send_event_published(event, db)
+    if not was_published:
+        push_service.send_event_published(event, db)
     return PublishResponse(status=event.status)
 
 
@@ -224,6 +245,10 @@ def delete_event(
     event = db.get(Event, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
+
+    was_published = event.status == "published"
+    if was_published:
+        push_service.send_event_canceled(event, db)
 
     db.delete(event)
     db.commit()

@@ -21,7 +21,7 @@ def test_points_update_and_history(app_client: TestClient):
     points_response = app_client.post(
         f"/classes/{class_id}/points",
         headers=headers,
-        json={"delta_points": 10, "category": "Спорт", "reason": "Турнир"},
+        json={"delta_points": 10, "category": "sport", "reason": "tournament"},
     )
     assert points_response.status_code == 200
     assert points_response.json()["total_points"] == 10
@@ -31,7 +31,7 @@ def test_points_update_and_history(app_client: TestClient):
     history = history_response.json()
     assert len(history) == 1
     assert history[0]["delta_points"] == 10
-    assert history[0]["category"] == "Спорт"
+    assert history[0]["category"] == "sport"
 
 
 def test_public_classes_top_available_and_sorted(app_client: TestClient):
@@ -72,7 +72,7 @@ def test_publish_requires_banner(app_client: TestClient):
     create_response = app_client.post(
         "/events",
         headers=headers,
-        json={"title": "День науки", "datetime_start": dt, "location": "Актовый зал"},
+        json={"title": "science day", "datetime_start": dt, "location": "assembly hall"},
     )
     assert create_response.status_code == 200
     event_id = create_response.json()["id"]
@@ -89,8 +89,8 @@ def test_upcoming_events_sorted_by_datetime(app_client: TestClient):
     first_dt = datetime.now(UTC) + timedelta(days=2)
     second_dt = datetime.now(UTC) + timedelta(days=1)
 
-    first_id = _create_and_publish_event(app_client, headers, "Событие 1", first_dt)
-    second_id = _create_and_publish_event(app_client, headers, "Событие 2", second_dt)
+    first_id = _create_and_publish_event(app_client, headers, "event 1", first_dt)
+    second_id = _create_and_publish_event(app_client, headers, "event 2", second_dt)
 
     response = app_client.get("/events", params={"from": "now", "limit": 20})
     assert response.status_code == 200
@@ -103,7 +103,7 @@ def test_upcoming_events_sorted_by_datetime(app_client: TestClient):
 def test_event_admin_editing_flow(app_client: TestClient):
     headers = auth_headers(app_client)
 
-    create_response = app_client.post("/events", headers=headers, json={"title": "Черновик"})
+    create_response = app_client.post("/events", headers=headers, json={"title": "draft"})
     assert create_response.status_code == 200
     event_id = create_response.json()["id"]
 
@@ -111,7 +111,7 @@ def test_event_admin_editing_flow(app_client: TestClient):
     update_response = app_client.patch(
         f"/events/{event_id}",
         headers=headers,
-        json={"title": "Обновленное", "datetime_start": new_dt, "location": "Каб. 42"},
+        json={"title": "updated", "datetime_start": new_dt, "location": "room 42"},
     )
     assert update_response.status_code == 200
 
@@ -132,7 +132,7 @@ def test_event_admin_editing_flow(app_client: TestClient):
 
 def test_event_delete_flow(app_client: TestClient):
     headers = auth_headers(app_client)
-    create_response = app_client.post("/events", headers=headers, json={"title": "Удаляемое мероприятие"})
+    create_response = app_client.post("/events", headers=headers, json={"title": "event to delete"})
     assert create_response.status_code == 200
     event_id = create_response.json()["id"]
 
@@ -144,11 +144,110 @@ def test_event_delete_flow(app_client: TestClient):
     assert details_response.status_code == 404
 
 
-def _create_and_publish_event(client: TestClient, headers: dict[str, str], title: str, dt: datetime) -> str:
+def test_publish_notifies_only_first_publish(app_client: TestClient, monkeypatch):
+    from app.api import events as events_api
+
+    calls: list[str] = []
+
+    def _fake_send_event_published(event, db=None):
+        calls.append(event.id)
+
+    monkeypatch.setattr(events_api.push_service, "send_event_published", _fake_send_event_published)
+
+    headers = auth_headers(app_client)
+    event_id = _create_event_with_banner(app_client, headers, "publish-once", datetime.now(UTC) + timedelta(days=2))
+
+    first_publish = app_client.post(f"/events/{event_id}/publish", headers=headers)
+    assert first_publish.status_code == 200
+    second_publish = app_client.post(f"/events/{event_id}/publish", headers=headers)
+    assert second_publish.status_code == 200
+
+    assert calls == [event_id]
+
+
+def test_update_published_datetime_sends_rescheduled_push(app_client: TestClient, monkeypatch):
+    from app.api import events as events_api
+
+    rescheduled_calls: list[str] = []
+    updated_calls: list[str] = []
+
+    monkeypatch.setattr(
+        events_api.push_service,
+        "send_event_rescheduled",
+        lambda event, db=None: rescheduled_calls.append(event.id),
+    )
+    monkeypatch.setattr(
+        events_api.push_service,
+        "send_event_updated",
+        lambda event, db=None: updated_calls.append(event.id),
+    )
+
+    headers = auth_headers(app_client)
+    event_id = _create_and_publish_event(app_client, headers, "published-to-reschedule", datetime.now(UTC) + timedelta(days=3))
+
+    patch_response = app_client.patch(
+        f"/events/{event_id}",
+        headers=headers,
+        json={"datetime_start": (datetime.now(UTC) + timedelta(days=5)).isoformat()},
+    )
+    assert patch_response.status_code == 200
+    assert rescheduled_calls == [event_id]
+    assert updated_calls == []
+
+
+def test_update_published_title_sends_updated_push(app_client: TestClient, monkeypatch):
+    from app.api import events as events_api
+
+    rescheduled_calls: list[str] = []
+    updated_calls: list[str] = []
+
+    monkeypatch.setattr(
+        events_api.push_service,
+        "send_event_rescheduled",
+        lambda event, db=None: rescheduled_calls.append(event.id),
+    )
+    monkeypatch.setattr(
+        events_api.push_service,
+        "send_event_updated",
+        lambda event, db=None: updated_calls.append(event.id),
+    )
+
+    headers = auth_headers(app_client)
+    event_id = _create_and_publish_event(app_client, headers, "published-to-update", datetime.now(UTC) + timedelta(days=4))
+
+    patch_response = app_client.patch(
+        f"/events/{event_id}",
+        headers=headers,
+        json={"title": "published-to-update-v2", "location": "new hall"},
+    )
+    assert patch_response.status_code == 200
+    assert updated_calls == [event_id]
+    assert rescheduled_calls == []
+
+
+def test_delete_published_event_sends_canceled_push(app_client: TestClient, monkeypatch):
+    from app.api import events as events_api
+
+    canceled_calls: list[str] = []
+    monkeypatch.setattr(
+        events_api.push_service,
+        "send_event_canceled",
+        lambda event, db=None: canceled_calls.append(event.id),
+    )
+
+    headers = auth_headers(app_client)
+    event_id = _create_and_publish_event(app_client, headers, "published-to-delete", datetime.now(UTC) + timedelta(days=2))
+
+    delete_response = app_client.delete(f"/events/{event_id}", headers=headers)
+    assert delete_response.status_code == 200
+    assert canceled_calls == [event_id]
+
+
+def _create_event_with_banner(client: TestClient, headers: dict[str, str], title: str, dt: datetime) -> str:
     create_response = client.post(
         "/events",
         headers=headers,
-        json={"title": title, "datetime_start": dt.isoformat(), "location": "Спортзал"},
+        json={"title": title, "datetime_start": dt.isoformat(), "location": "test location"},
     )
     assert create_response.status_code == 200, create_response.text
     event_id = create_response.json()["id"]
@@ -159,6 +258,11 @@ def _create_and_publish_event(client: TestClient, headers: dict[str, str], title
         files={"banner": ("banner.png", b"png-bytes", "image/png")},
     )
     assert banner_response.status_code == 200, banner_response.text
+    return event_id
+
+
+def _create_and_publish_event(client: TestClient, headers: dict[str, str], title: str, dt: datetime) -> str:
+    event_id = _create_event_with_banner(client, headers, title, dt)
 
     publish_response = client.post(f"/events/{event_id}/publish", headers=headers)
     assert publish_response.status_code == 200, publish_response.text
