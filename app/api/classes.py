@@ -18,6 +18,20 @@ def list_classes(db: Session = Depends(get_db)):
     return rows
 
 
+@router.get("/public/top", response_model=list[ClassOut])
+def list_classes_public_top(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    safe_limit = max(1, min(limit, 100))
+    rows = db.scalars(
+        select(SchoolClass)
+        .order_by(SchoolClass.total_points.desc(), SchoolClass.grade.asc(), SchoolClass.letter.asc())
+        .limit(safe_limit)
+    ).all()
+    return rows
+
+
 @router.post("/{class_id}/points", response_model=PointOperationResponse)
 def add_points(
     class_id: str,
@@ -60,4 +74,3 @@ def points_history(
         .order_by(PointTransaction.created_at.desc())
     ).all()
     return rows
-

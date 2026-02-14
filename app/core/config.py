@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     app_name: str = "School Events API"
     app_env: str = "dev"
+    app_version: str = "1.3.0"
     api_v1_prefix: str = ""
 
     jwt_secret: str = "change_me"
@@ -47,4 +48,3 @@ def get_settings() -> Settings:
 
 def clear_settings_cache() -> None:
     get_settings.cache_clear()
-

@@ -13,7 +13,23 @@ router = APIRouter(tags=["system"])
 
 @router.get("/health")
 def health():
-    return {"status": "ok"}
+    settings = get_settings()
+    return {"status": "ok", "version": settings.app_version}
+
+
+@router.get("/system/info")
+def system_info(db: Session = Depends(get_db)):
+    settings = get_settings()
+    creds_path = Path(settings.fcm_service_account_json)
+    devices_count = db.scalar(select(func.count()).select_from(Device)) or 0
+    return {
+        "app_name": settings.app_name,
+        "app_env": settings.app_env,
+        "app_version": settings.app_version,
+        "push_topic": settings.fcm_topic,
+        "push_credentials_exists": creds_path.exists(),
+        "registered_devices": devices_count,
+    }
 
 
 @router.get("/push/status")

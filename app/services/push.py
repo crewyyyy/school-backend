@@ -93,7 +93,6 @@ class PushService:
         if db is None:
             return []
         rows: Sequence[str] = db.scalars(select(Device.fcm_token)).all()
-        # Keep order and deduplicate.
         return list(dict.fromkeys(token for token in rows if token))
 
     def _send_to_topic(self, event: Event) -> bool:

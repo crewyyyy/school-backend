@@ -8,6 +8,18 @@ def test_health_endpoint_is_available_for_client(app_client: TestClient):
     assert response.status_code == 200
     payload = response.json()
     assert payload.get("status") == "ok"
+    assert isinstance(payload.get("version"), str)
+
+
+def test_system_info_endpoint_returns_backend_version(app_client: TestClient):
+    response = app_client.get("/system/info")
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload.get("app_name"), str)
+    assert isinstance(payload.get("app_env"), str)
+    assert isinstance(payload.get("app_version"), str)
+    assert "push_credentials_exists" in payload
+    assert "registered_devices" in payload
 
 
 def test_admin_events_contract_for_client_parsing(app_client: TestClient):

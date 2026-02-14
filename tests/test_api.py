@@ -34,6 +34,38 @@ def test_points_update_and_history(app_client: TestClient):
     assert history[0]["category"] == "Спорт"
 
 
+def test_public_classes_top_available_and_sorted(app_client: TestClient):
+    headers = auth_headers(app_client)
+    classes_response = app_client.get("/classes", headers=headers)
+    assert classes_response.status_code == 200
+    classes = classes_response.json()
+    assert len(classes) >= 2
+
+    class_id_first = classes[0]["id"]
+    class_id_second = classes[1]["id"]
+
+    points_response_first = app_client.post(
+        f"/classes/{class_id_first}/points",
+        headers=headers,
+        json={"delta_points": 5, "category": "test", "reason": "a"},
+    )
+    assert points_response_first.status_code == 200
+
+    points_response_second = app_client.post(
+        f"/classes/{class_id_second}/points",
+        headers=headers,
+        json={"delta_points": 15, "category": "test", "reason": "b"},
+    )
+    assert points_response_second.status_code == 200
+
+    public_response = app_client.get("/classes/public/top", params={"limit": 10})
+    assert public_response.status_code == 200
+    public_items = public_response.json()
+    assert public_items
+    assert public_items[0]["id"] == class_id_second
+    assert public_items[0]["total_points"] >= public_items[1]["total_points"]
+
+
 def test_publish_requires_banner(app_client: TestClient):
     headers = auth_headers(app_client)
     dt = (datetime.now(UTC) + timedelta(days=1)).isoformat()
