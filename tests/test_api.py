@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from tests.conftest import auth_headers
 
@@ -119,7 +121,7 @@ def test_event_admin_editing_flow(app_client: TestClient):
         f"/events/{event_id}/blocks/image",
         headers=headers,
         params={"sort_order": 2},
-        files={"image": ("block.png", b"img-bytes", "image/png")},
+        files={"image": ("block.png", _image_bytes("PNG"), "image/png")},
     )
     assert image_block_response.status_code == 200, image_block_response.text
     assert image_block_response.json()["type"] == "image"
@@ -128,6 +130,30 @@ def test_event_admin_editing_flow(app_client: TestClient):
     assert admin_list_response.status_code == 200
     admin_ids = [item["id"] for item in admin_list_response.json()]
     assert event_id in admin_ids
+
+
+def test_uploads_are_normalized_to_png(app_client: TestClient):
+    headers = auth_headers(app_client)
+    create_response = app_client.post("/events", headers=headers, json={"title": "png-normalize"})
+    assert create_response.status_code == 200
+    event_id = create_response.json()["id"]
+
+    banner_response = app_client.post(
+        f"/events/{event_id}/banner",
+        headers=headers,
+        files={"banner": ("banner.jpg", _image_bytes("JPEG"), "image/jpeg")},
+    )
+    assert banner_response.status_code == 200, banner_response.text
+    assert banner_response.json()["banner_image_url"].endswith(".png")
+
+    block_response = app_client.post(
+        f"/events/{event_id}/blocks/image",
+        headers=headers,
+        params={"sort_order": 1},
+        files={"image": ("image.jpg", _image_bytes("JPEG"), "image/jpeg")},
+    )
+    assert block_response.status_code == 200, block_response.text
+    assert block_response.json()["image_url"].endswith(".png")
 
 
 def test_event_delete_flow(app_client: TestClient):
@@ -255,7 +281,7 @@ def _create_event_with_banner(client: TestClient, headers: dict[str, str], title
     banner_response = client.post(
         f"/events/{event_id}/banner",
         headers=headers,
-        files={"banner": ("banner.png", b"png-bytes", "image/png")},
+        files={"banner": ("banner.png", _image_bytes("PNG"), "image/png")},
     )
     assert banner_response.status_code == 200, banner_response.text
     return event_id
@@ -267,3 +293,10 @@ def _create_and_publish_event(client: TestClient, headers: dict[str, str], title
     publish_response = client.post(f"/events/{event_id}/publish", headers=headers)
     assert publish_response.status_code == 200, publish_response.text
     return event_id
+
+
+def _image_bytes(fmt: str) -> bytes:
+    image = Image.new("RGB", (8, 8), (120, 60, 200))
+    output = BytesIO()
+    image.save(output, format=fmt)
+    return output.getvalue()

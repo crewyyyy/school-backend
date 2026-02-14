@@ -23,7 +23,7 @@ from app.schemas.events import (
     PublishResponse,
 )
 from app.services.push import PushService
-from app.services.storage import StorageService
+from app.services.storage import StorageImageError, StorageService
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -104,7 +104,10 @@ async def upload_banner(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    banner_url = await storage_service.save_upload(banner, prefix=f"events/{event_id}/banner")
+    try:
+        banner_url = await storage_service.save_upload_as_png(banner, prefix=f"events/{event_id}/banner")
+    except StorageImageError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
     event.banner_image_url = banner_url
     db.add(event)
     db.commit()
@@ -123,7 +126,10 @@ async def upload_image_block(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    image_url = await storage_service.save_upload(image, prefix=f"events/{event_id}/blocks")
+    try:
+        image_url = await storage_service.save_upload_as_png(image, prefix=f"events/{event_id}/blocks")
+    except StorageImageError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from ex
     block = EventBlock(
         event_id=event.id,
         type="image",

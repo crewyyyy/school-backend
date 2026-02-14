@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     app_name: str = "School Events API"
     app_env: str = "dev"
-    app_version: str = "1.3.0"
+    app_version: str = "1.3.1"
     api_v1_prefix: str = ""
 
     jwt_secret: str = "change_me"
