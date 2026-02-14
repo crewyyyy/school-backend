@@ -34,6 +34,23 @@ services:
       timeout: 5s
       retries: 10
 
+  tg-bot:
+    container_name: ${TG_BOT_CONTAINER_NAME:-school-api-tg-bot}
+    image: ${BACKEND_IMAGE:-ghcr.io/crewyyyy/school-backend:latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
+      TG_ADMIN_CHAT_ID: ${TG_ADMIN_CHAT_ID:-}
+      TG_BOT_ALLOWED_CHAT_IDS: ${TG_BOT_ALLOWED_CHAT_IDS:-}
+      TG_BOT_API_BASE_URL: ${TG_BOT_API_BASE_URL:-http://backend:8000}
+      TG_BOT_API_LOGIN: ${TG_BOT_API_LOGIN:-admin}
+      TG_BOT_API_PASSWORD: ${TG_BOT_API_PASSWORD:-admin123}
+      TG_BOT_DEFAULT_TITLE: ${TG_BOT_DEFAULT_TITLE:-EduFlow notification}
+    command: ["python", "scripts/tg_push_bot.py"]
+
   watchtower:
     image: containrrr/watchtower:latest
     container_name: ${WATCHTOWER_CONTAINER_NAME:-school-api-watchtower}

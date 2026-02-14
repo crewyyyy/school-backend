@@ -146,6 +146,8 @@ Set values in `.env.deploy`:
 - `BACKEND_IMAGE=ghcr.io/crewyyyy/school-backend:latest`
 - `PUBLIC_HOST=<SERVER_IP_OR_DOMAIN>`
 - `JWT_SECRET=<strong_secret>`
+- `TG_BOT_TOKEN=<telegram_bot_token>`
+- `TG_ADMIN_CHAT_ID=<your_telegram_chat_id>`
 
 First deploy:
 
@@ -153,6 +155,8 @@ First deploy:
 docker compose -f docker-compose.deploy.yml --env-file .env.deploy pull
 docker compose -f docker-compose.deploy.yml --env-file .env.deploy up -d
 ```
+
+Bot runs as separate service `tg-bot` in the same compose file and sends push via backend API.
 
 ### 3) Auto-update options
 
