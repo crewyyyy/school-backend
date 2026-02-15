@@ -1,17 +1,24 @@
-# backend
+﻿# backend
 
-FastAPI backend for:
+FastAPI backend for EduFlow:
+- admin auth (JWT)
+- classes and points
+- events and content blocks
+- image upload with PNG normalization
+- device registration for push
+- push notifications (new/rescheduled/updated/canceled)
+- test push endpoint and Telegram bot
 
-- admin auth (JWT),
-- classes and points,
-- events and media upload,
-- mobile device registration for push.
+## Stack
 
-## Environment
+- Python 3.13
+- FastAPI + Uvicorn
+- SQLAlchemy 2 + Alembic
+- Pillow (image conversion)
+- Firebase Admin SDK (FCM)
+- Aiogram (Telegram bot)
 
-Copy `.env.example` to `.env` and adjust values.
-
-## Run
+## Local run (without Docker)
 
 ```powershell
 python -m venv .venv
@@ -23,157 +30,133 @@ python scripts/seed_admin.py --login admin --password admin123
 uvicorn app.main:app --reload --port 8000
 ```
 
+Checks:
+
+```powershell
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/system/info
+```
+
 ## Tests
 
 ```powershell
 .\.venv\Scripts\python -m pytest -q
 ```
 
-## Standalone server container (single service)
+## Key endpoints
 
-This mode runs backend in one container with:
-- SQLite DB in Docker volume,
-- local media storage in Docker volume,
-- automatic migrations and seed on startup.
+- `POST /auth/login`
+- `GET /events`
+- `GET /events/{id}`
+- `POST /events/{id}/publish`
+- `DELETE /events/{id}`
+- `POST /events/{id}/banner` (upload + PNG normalization)
+- `POST /events/{id}/blocks/image` (upload + PNG normalization)
+- `POST /devices/register`
+- `GET /health`
+- `GET /system/info`
+- `GET /push/status`
+- `POST /push/test` (admin auth required)
 
-### 1) Prepare env file
+## Environment files
+
+- `.env.example` - local development
+- `.env.standalone.example` - standalone Docker
+- `.env.deploy.example` - production deploy from GHCR
+
+Important:
+- Replace `JWT_SECRET` in production
+- `FCM_SERVICE_ACCOUNT_JSON` must point to a valid service-account JSON inside the container
+
+## Standalone Docker
 
 ```powershell
-cd backend
 copy .env.standalone.example .env.standalone
-```
-
-Linux/macOS:
-
-```bash
-cd backend
-cp .env.standalone.example .env.standalone
-```
-
-Edit `.env.standalone`:
-- set `PUBLIC_HOST` to your server public IP or domain,
-- set `HOST_PORT` if `8000` is already used on server,
-- set strong `JWT_SECRET`,
-- optionally change admin credentials.
-- do not reuse `.env.example` for standalone mode.
-
-For push notifications:
-- place Firebase service account file at `backend/secrets/fcm-service-account.json`,
-- keep `FCM_SERVICE_ACCOUNT_JSON=/app/secrets/fcm-service-account.json` (default),
-- optional: change `FCM_TOPIC`.
-
-### 2) Build and run
-
-```powershell
 docker compose -f docker-compose.standalone.yml --env-file .env.standalone up -d --build
 ```
 
-If you previously started with wrong env values, reset and start clean:
+Check:
 
 ```powershell
-docker compose -f docker-compose.standalone.yml --env-file .env.standalone down
-docker compose -f docker-compose.standalone.yml --env-file .env.standalone up -d --build
+curl http://127.0.0.1:8000/health
 ```
 
-### 3) Verify
+## Deploy from GHCR
 
 ```powershell
-curl http://<SERVER_IP>:<HOST_PORT>/health
-```
-
-Expected: `{"status":"ok"}`.
-
-For push diagnostics:
-
-```powershell
-curl http://<SERVER_IP>:<HOST_PORT>/push/status
-```
-
-### 4) Client connection values
-
-- Admin PC client API URL: `http://<SERVER_IP>:<HOST_PORT>`
-- Mobile client API base URL: `http://<SERVER_IP>:<HOST_PORT>/`
-
-If server has firewall, open TCP port used in `HOST_PORT` (default: `8000`).
-
-### Troubleshooting: `connection to server at "127.0.0.1", port 5432 failed`
-
-This means standalone started with Postgres URL (`DATABASE_URL=...localhost:5432...`) instead of SQLite volume DB.
-
-Fix:
-1. Ensure you run exactly:
-   `docker compose -f docker-compose.standalone.yml --env-file .env.standalone up -d --build`
-2. In `.env.standalone`, keep `STANDALONE_DATABASE_URL` empty or set it to SQLite.
-3. Restart container stack.
-
-### Troubleshooting: publish works but push notifications do not arrive
-
-1. Check backend logs:
-   `docker compose -f docker-compose.standalone.yml --env-file .env.standalone logs -f backend`
-2. On startup you should see:
-   `FCM_SERVICE_ACCOUNT_JSON=... (exists=True)`.
-3. If `exists=False`, mount and provide Firebase service account JSON:
-   `backend/secrets/fcm-service-account.json`.
-4. Restart stack after adding the file.
-
-## GHCR deploy with auto-update (no manual copy on server)
-
-This flow publishes Docker image from GitHub Actions and deploys by pulling image tag on server.
-
-### 1) CI image publishing to GHCR
-
-Workflow file: `.github/workflows/backend-image.yml`
-
-- image name: `ghcr.io/<owner>/school-backend`
-- tags:
-  - `latest` (default branch),
-  - `sha-<commit>`
-
-### 2) Server deploy compose (image only)
-
-Files:
-- `docker-compose.deploy.yml`
-- `.env.deploy.example`
-
-Prepare env:
-
-```bash
-cd backend
-cp .env.deploy.example .env.deploy
-```
-
-Set values in `.env.deploy`:
-- `BACKEND_IMAGE=ghcr.io/crewyyyy/school-backend:latest`
-- `PUBLIC_HOST=<SERVER_IP_OR_DOMAIN>`
-- `JWT_SECRET=<strong_secret>`
-- `TG_BOT_TOKEN=<telegram_bot_token>`
-- `TG_ADMIN_CHAT_ID=<your_telegram_chat_id>`
-
-First deploy:
-
-```bash
+copy .env.deploy.example .env.deploy
 docker compose -f docker-compose.deploy.yml --env-file .env.deploy pull
 docker compose -f docker-compose.deploy.yml --env-file .env.deploy up -d
 ```
 
-Bot runs as separate service `tg-bot` in the same compose file and sends push via backend API.
+Deploy services:
+- `backend`
+- `tg-bot`
+- optional `watchtower` profile
 
-### 3) Auto-update options
+Logs:
 
-Option A: Watchtower (recommended):
-
-```bash
-docker compose -f docker-compose.deploy.yml --env-file .env.deploy --profile watchtower up -d watchtower
+```powershell
+docker compose -f docker-compose.deploy.yml --env-file .env.deploy logs -f backend
+docker compose -f docker-compose.deploy.yml --env-file .env.deploy logs -f tg-bot
 ```
 
-Option B: cron using update script:
+## Telegram bot
+
+Script: `scripts/tg_push_bot.py`
+
+Main environment variables:
+- `TG_BOT_TOKEN`
+- `TG_ADMIN_CHAT_ID`
+- `TG_BOT_API_BASE_URL` (default: `http://backend:8000`)
+- `TG_BOT_API_LOGIN`
+- `TG_BOT_API_PASSWORD`
+
+Supported bot commands:
+- `/start`
+- `/status`
+- `/send <text>`
+- `/notify <title> | <text>`
+
+## Push troubleshooting
+
+### Symptom: no push notifications
+
+1. Check backend status:
+   - `GET /system/info` -> `push_credentials_exists=true`
+   - `GET /push/status` -> `credentials_exists=true`
+2. Verify file inside container:
+   - `/app/secrets/fcm-service-account.json`
+3. Verify registered devices count:
+   - `registered_devices > 0`
+4. Run manual test:
 
 ```bash
-chmod +x backend/scripts/deploy_update.sh
+BASE=http://127.0.0.1:8000
+TOKEN=$(curl -s "$BASE/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"login":"admin","password":"admin123"}' | jq -r .access_token)
+
+curl -s -X POST "$BASE/push/test" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"EduFlow test","body":"Manual test push"}'
 ```
 
-Run every 5 minutes:
+If response has `enabled=false` and `push_service_disabled_or_missing_credentials`, backend cannot read FCM credentials.
 
-```bash
-*/5 * * * * /bin/bash /path/to/project/backend/scripts/deploy_update.sh >/var/log/school-api-update.log 2>&1
-```
+## Common issues
+
+### `connection to server at "127.0.0.1", port 5432 failed`
+
+Wrong `DATABASE_URL` for selected mode. Verify `.env.standalone`/`.env.deploy`.
+
+### `Method Not Allowed` when deleting event
+
+Client must call `DELETE /events/{event_id}` (not `POST`).
+
+### Tunnel/domain problems
+
+If `curl http://127.0.0.1:8000/health` works locally but domain does not:
+- verify tunnel ingress target (`service: http://127.0.0.1:8000`)
+- verify DNS and tunnel container health
